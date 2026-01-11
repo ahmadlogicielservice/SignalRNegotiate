@@ -1,0 +1,36 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>SignalR Test</title>
+</head>
+<body>
+    <h1>SignalR Azure Test</h1>
+    <label>Bearer</label>
+    <input type="text" id="bearer"/>
+    <button id="connect">Connect</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script>
+        document.getElementById("connect").onclick = async () => {
+            
+            const bearer = document.getElementById("bearer").value.trim();
+
+            if (!bearer) {
+                alert("Bearer token required");
+                return;
+            }
+            
+            const connection = new signalR.HubConnectionBuilder()
+                  .withUrl("/hubs/chat", {
+                      accessTokenFactory: () => bearer   // <-- this is used for /hub/negotiate
+                    })
+                .withAutomaticReconnect()
+                .build();
+
+          await connection.start();
+          alert("Connected!");
+        };
+    </script>
+</body>
+</html>

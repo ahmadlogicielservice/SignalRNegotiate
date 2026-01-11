@@ -1,0 +1,6 @@
+@SignalRNegotiate_HostAddress = http://localhost:5182
+
+GET {{SignalRNegotiate_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
