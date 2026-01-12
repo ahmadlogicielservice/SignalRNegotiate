@@ -9,9 +9,11 @@
 
     <!-- LOGIN -->
     <div id="loginSection">
-        <label>Name</label>
-        <input type="text" id="name" required />
-        <button id="connect">Connect</button>
+        <form id="loginForm">
+            <label for="name">Name</label>
+            <input type="text" id="name" required min="1" />
+            <button type="submit" id="connect">Connect</button>
+        </form>
     </div>
 
     <!-- TOKENS -->
@@ -30,9 +32,11 @@
     <!-- CHAT -->
     <div id="chatSection" style="display:none;">
         <hr />
-        <input type="text" id="messageInput" placeholder="Type a message..." />
-        <button id="send">Send</button>
-        <button id="logout">Logout</button>
+        <form id="chatForm">
+            <input type="text" id="messageInput" placeholder="Type a message..." required />
+            <button type="submit" id="send">Send</button>
+            <button type="button" id="logout">Logout</button>
+        </form>
     </div>
 
     <hr />
@@ -47,60 +51,44 @@
             const p = document.createElement("p");
 
             if (addTime) {
-                p.appendChild(document.createTextNode(
-                    `[${new Date().toLocaleTimeString()}] `
-                ));
+                p.appendChild(document.createTextNode(`[${new Date().toLocaleTimeString()}] `));
             }
 
-            if (!senderName || senderName.trim() === "") {
-                const i = document.createElement("i");
-                i.textContent = "unknown";
-                p.appendChild(i);
-            } else {
-                p.appendChild(document.createTextNode(senderName));
-            }
-
+            p.appendChild(document.createTextNode(senderName?.trim() || "System"));
             p.appendChild(document.createTextNode(": " + message));
+
             div.appendChild(p);
+            div.scrollTop = div.scrollHeight; // Auto-scroll to bottom
         }
 
         async function postJson(url, headers = {}) {
-            const response = await fetch(url, {
-                method: "POST",
-                headers
-            });
-
-            if (!response.ok) {
-                throw new Error(`${response.status} ${response.statusText}`);
-            }
-
+            const response = await fetch(url, { method: "POST", headers });
+            if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
             return response.json();
         }
 
-        document.getElementById("connect").onclick = async () => {
+        // LOGIN FORM
+        document.getElementById("loginForm").onsubmit = async (e) => {
+            e.preventDefault();
+            const connectBtn = document.getElementById("connect");
+            connectBtn.disabled = true;
+
             const name = document.getElementById("name").value.trim();
             if (!name) {
-                addNotification("Name is required");
+                alert("Name is required.");
+                connectBtn.disabled = false;
                 return;
             }
 
             try {
-                /* LOGIN TOKEN */
                 const login = await postJson(`/auth/login?name=${encodeURIComponent(name)}`);
                 document.getElementById("loginToken").textContent = login.accessToken;
 
-                /* CHAT TOKEN */
-                const chat = await postJson(
-                    "/auth/chat-token",
-                    { "Authorization": `Bearer ${login.accessToken}` }
-                );
+                const chat = await postJson("/auth/chat-token", { "Authorization": `Bearer ${login.accessToken}` });
                 document.getElementById("chatToken").textContent = chat.accessToken;
 
-                /* SIGNALR */
                 connection = new signalR.HubConnectionBuilder()
-                    .withUrl("/hubs/chat", {
-                        accessTokenFactory: () => chat.accessToken
-                    })
+                    .withUrl("/hubs/chat", { accessTokenFactory: () => chat.accessToken })
                     .withAutomaticReconnect()
                     .build();
 
@@ -108,48 +96,52 @@
                     addNotification(message, true, sender);
                 });
 
-                connection.onclose(() => {
-                    addNotification("Disconnected.", true, "System");
-                });
+                connection.onclose(() => addNotification("Disconnected.", true, "System"));
 
                 await connection.start();
-
                 addNotification("Connected.", true, "System");
 
                 // UI transitions
                 document.getElementById("loginSection").style.display = "none";
                 document.getElementById("tokenSection").style.display = "block";
                 document.getElementById("chatSection").style.display = "block";
-
             } catch (err) {
-                console.error(err);
-                addNotification("Connection failed.", true, "System");
-                alert(err.message);
+                console.error("SignalR connection error:", err);
+                addNotification(`Connection failed: ${err?.message ?? "Unknown error"}`, true, "System");
+            } finally {
+                connectBtn.disabled = false;
             }
         };
 
-        document.getElementById("send").onclick = async () => {
+        // CHAT FORM
+        document.getElementById("chatForm").onsubmit = async (e) => {
+            e.preventDefault();
             const input = document.getElementById("messageInput");
             const message = input.value.trim();
+            const sendBtn = document.getElementById("send");
 
             if (!message || !connection) return;
+
+            sendBtn.disabled = true;
 
             try {
                 await connection.invoke("SendMessage", message);
                 input.value = "";
+                input.focus();
             } catch (err) {
                 console.error(err);
                 addNotification("Failed to send message.", true, "System");
+            } finally {
+                sendBtn.disabled = false;
             }
         };
 
         document.getElementById("logout").onclick = async () => {
             if (connection) {
-                await connection.stop();
+                await connection.stop().catch(() => {});
                 connection = null;
             }
 
-            // Reset UI
             document.getElementById("loginSection").style.display = "block";
             document.getElementById("tokenSection").style.display = "none";
             document.getElementById("chatSection").style.display = "none";

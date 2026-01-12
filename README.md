@@ -25,7 +25,6 @@ The root page (`http://localhost:5182/`) is a **simple test page** that allows y
 3. Click **Connect**.  
 
 4. If successful:
-   - An alert will appear: “Connected!”
    - A notification message will appear on the page.
    - Any messages sent from the hub will be displayed in the notification area.
 

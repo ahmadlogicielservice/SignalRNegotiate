@@ -7,102 +7,92 @@
 <body>
     <h1>SignalR Azure Test</h1>
 
-    <label>Bearer</label>
-    <input type="text" id="bearer" required />
-    <button id="connect">Connect</button>
+    <form id="connectForm">
+        <label for="bearer">Bearer</label>
+        <input type="text" id="bearer" required />
+        <button type="submit" id="connect">Connect</button>
+    </form>
+
     <br />
-    <div id="notification">
-        <h1>Notification</h1>
+    <div id="notification" style="max-height:300px; overflow:auto;">
+        <h2>Notification</h2>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
     <script>
+        let connection = null;
+
         function addNotification(message, addTime = true, senderName = null) {
             const notificationDiv = document.getElementById("notification");
             const p = document.createElement("p");
 
-            // Time
             if (addTime) {
                 const timeSpan = document.createElement("span");
                 timeSpan.textContent = `[${new Date().toLocaleTimeString()}] `;
                 p.appendChild(timeSpan);
             }
 
-            // Sender name
             const nameSpan = document.createElement("span");
-            if (!senderName || senderName.trim() === "") {
-                const unknown = document.createElement("i");
-                unknown.textContent = "unknown";
-                nameSpan.appendChild(unknown);
-            } else {
-                nameSpan.textContent = senderName;
-            }
+            nameSpan.textContent = senderName?.trim() || "System";
             p.appendChild(nameSpan);
 
-            // Separator
             p.appendChild(document.createTextNode(": "));
-
-            // Message
             const messageSpan = document.createElement("span");
             messageSpan.textContent = message;
             p.appendChild(messageSpan);
 
             notificationDiv.appendChild(p);
+            notificationDiv.scrollTop = notificationDiv.scrollHeight; // Auto-scroll
         }
 
-        document.getElementById("connect").onclick = async () => {
-            const bearer = document.getElementById("bearer").value.trim();
+        document.getElementById("connectForm").onsubmit = async (e) => {
+            e.preventDefault();
+            const connectBtn = document.getElementById("connect");
+            connectBtn.disabled = true;
 
+            const bearer = document.getElementById("bearer").value.trim();
             if (!bearer) {
-                addNotification("Bearer token required", true, "");
+                addNotification("Bearer token required", true);
                 alert("Bearer token required");
+                connectBtn.disabled = false;
                 return;
             }
 
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/hubs/chat", {
-                    accessTokenFactory: () => bearer
-                })
-                .withAutomaticReconnect()
-                .build();
-
-            /* -------------------- MESSAGE EVENT -------------------- */
-            // This must match the server-side hub method name
-            connection.on("ReceiveMessage", (sender, message) => {
-                addNotification(message, true, sender);
-            });
-
-            /* -------------------- DISCONNECT EVENT -------------------- */
-            connection.onclose(error => {
-                if (error) {
-                    addNotification("Disconnected due to error.", true, "System");
-                    console.error(error);
-                } else {
-                    addNotification("Disconnected.", true, "System");
-                }
-            });
-
-            /* -------------------- RECONNECT EVENTS (OPTIONAL) -------------------- */
-            connection.onreconnecting(error => {
-                addNotification("Reconnecting...", true, "System");
-            });
-
-            connection.onreconnected(connectionId => {
-                addNotification("Reconnected successfully.", true, "System");
-            });
-
             try {
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl("/hubs/chat", { accessTokenFactory: () => bearer })
+                    .withAutomaticReconnect()
+                    .build();
+
+                connection.on("ReceiveMessage", (sender, message) => {
+                    addNotification(message, true, sender);
+                });
+
+                connection.onclose(error => {
+                    if (error) {
+                        addNotification("Disconnected due to error.", true, "System");
+                        console.error(error);
+                    } else {
+                        addNotification("Disconnected.", true, "System");
+                    }
+                });
+
+                connection.onreconnecting(error => {
+                    addNotification("Reconnecting...", true, "System");
+                });
+
+                connection.onreconnected(connectionId => {
+                    addNotification("Reconnected successfully.", true, "System");
+                });
+
                 await connection.start();
                 addNotification("Successfully connected to SignalR hub.", true, "System");
-                alert("Connected!");
 
             } catch (err) {
-                addNotification("Connection failed.", true, "System");
+                addNotification(`Connection failed: ${err?.message ?? "Unknown error"}`, true, "System");
                 console.error("SignalR connection error:", err);
-                alert(
-                    `There was an issue connecting to the server.\r\n` +
-                    `Connection failed: ${err?.message ?? "Unknown error"}`
-                );
+            } finally {
+                connectBtn.disabled = false;
             }
         };
     </script>
