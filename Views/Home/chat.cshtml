@@ -1,0 +1,165 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>SignalR Chat</title>
+</head>
+<body>
+    <h1>SignalR Chat Room</h1>
+
+    <!-- LOGIN -->
+    <div id="loginSection">
+        <label>Name</label>
+        <input type="text" id="name" required />
+        <button id="connect">Connect</button>
+    </div>
+
+    <!-- TOKENS -->
+    <div id="tokenSection" style="display:none;">
+        <h3>Tokens</h3>
+        <div>
+            <strong>Login Token:</strong>
+            <pre id="loginToken"></pre>
+        </div>
+        <div>
+            <strong>Chat Token:</strong>
+            <pre id="chatToken"></pre>
+        </div>
+    </div>
+
+    <!-- CHAT -->
+    <div id="chatSection" style="display:none;">
+        <hr />
+        <input type="text" id="messageInput" placeholder="Type a message..." />
+        <button id="send">Send</button>
+        <button id="logout">Logout</button>
+    </div>
+
+    <hr />
+    <div id="notification"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+    <script>
+        let connection = null;
+
+        function addNotification(message, addTime = true, senderName = null) {
+            const div = document.getElementById("notification");
+            const p = document.createElement("p");
+
+            if (addTime) {
+                p.appendChild(document.createTextNode(
+                    `[${new Date().toLocaleTimeString()}] `
+                ));
+            }
+
+            if (!senderName || senderName.trim() === "") {
+                const i = document.createElement("i");
+                i.textContent = "unknown";
+                p.appendChild(i);
+            } else {
+                p.appendChild(document.createTextNode(senderName));
+            }
+
+            p.appendChild(document.createTextNode(": " + message));
+            div.appendChild(p);
+        }
+
+        async function postJson(url, headers = {}) {
+            const response = await fetch(url, {
+                method: "POST",
+                headers
+            });
+
+            if (!response.ok) {
+                throw new Error(`${response.status} ${response.statusText}`);
+            }
+
+            return response.json();
+        }
+
+        document.getElementById("connect").onclick = async () => {
+            const name = document.getElementById("name").value.trim();
+            if (!name) {
+                addNotification("Name is required");
+                return;
+            }
+
+            try {
+                /* LOGIN TOKEN */
+                const login = await postJson(`/auth/login?name=${encodeURIComponent(name)}`);
+                document.getElementById("loginToken").textContent = login.accessToken;
+
+                /* CHAT TOKEN */
+                const chat = await postJson(
+                    "/auth/chat-token",
+                    { "Authorization": `Bearer ${login.accessToken}` }
+                );
+                document.getElementById("chatToken").textContent = chat.accessToken;
+
+                /* SIGNALR */
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl("/hubs/chat", {
+                        accessTokenFactory: () => chat.accessToken
+                    })
+                    .withAutomaticReconnect()
+                    .build();
+
+                connection.on("ReceiveMessage", (sender, message) => {
+                    addNotification(message, true, sender);
+                });
+
+                connection.onclose(() => {
+                    addNotification("Disconnected.", true, "System");
+                });
+
+                await connection.start();
+
+                addNotification("Connected.", true, "System");
+
+                // UI transitions
+                document.getElementById("loginSection").style.display = "none";
+                document.getElementById("tokenSection").style.display = "block";
+                document.getElementById("chatSection").style.display = "block";
+
+            } catch (err) {
+                console.error(err);
+                addNotification("Connection failed.", true, "System");
+                alert(err.message);
+            }
+        };
+
+        document.getElementById("send").onclick = async () => {
+            const input = document.getElementById("messageInput");
+            const message = input.value.trim();
+
+            if (!message || !connection) return;
+
+            try {
+                await connection.invoke("SendMessage", message);
+                input.value = "";
+            } catch (err) {
+                console.error(err);
+                addNotification("Failed to send message.", true, "System");
+            }
+        };
+
+        document.getElementById("logout").onclick = async () => {
+            if (connection) {
+                await connection.stop();
+                connection = null;
+            }
+
+            // Reset UI
+            document.getElementById("loginSection").style.display = "block";
+            document.getElementById("tokenSection").style.display = "none";
+            document.getElementById("chatSection").style.display = "none";
+
+            document.getElementById("loginToken").textContent = "";
+            document.getElementById("chatToken").textContent = "";
+            document.getElementById("notification").innerHTML = "";
+
+            addNotification("Logged out.", true, "System");
+        };
+    </script>
+</body>
+</html>

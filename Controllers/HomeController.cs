@@ -9,5 +9,12 @@ namespace SignalRNegotiate.Controllers
         {
             return View();
         }
+
+        [HttpGet("/chat")]
+        public IActionResult Chat()
+        {
+            return View();
+        }
+
     }
 }
